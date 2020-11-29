@@ -1,2 +1,581 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.1.1">Jekyll</generator><link href="/feed.xml" rel="self" type="application/atom+xml" /><link href="/" rel="alternate" type="text/html" /><updated>2020-08-03T11:43:48-07:00</updated><id>/feed.xml</id><title type="html">YAPB - Yet Another Personal Blog</title><subtitle>David Nguyen's personal blog. That's all there is to it.
-</subtitle><author><name>David Nguyen</name><email>david@davidnguyenis.me</email></author></feed>
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.1.1">Jekyll</generator><link href="/feed.xml" rel="self" type="application/atom+xml" /><link href="/" rel="alternate" type="text/html" /><updated>2020-12-30T20:41:14-08:00</updated><id>/feed.xml</id><title type="html">YAPB - Yet Another Personal Blog</title><subtitle>David Nguyen's personal blog. That's all there is to it.
+</subtitle><author><name>David Nguyen</name><email>david@davidnguyenis.me</email></author><entry><title type="html">Booting</title><link href="/2020/11/24/booting.html" rel="alternate" type="text/html" title="Booting" /><published>2020-11-24T00:00:00-08:00</published><updated>2020-11-24T00:00:00-08:00</updated><id>/2020/11/24/booting</id><content type="html" xml:base="/2020/11/24/booting.html">&lt;p&gt;Since this post marks the start of my blog, there’s nothing more fitting than
+to talk about booting. Booting is the process in which computers initialize
+and start an operating system. It’s a dance between hardware and software, so
+the details can vary between computers. I am going to focus, particularly, on
+one way an x86 machine boots a Linux based OS using UEFI-compliant firmware.
+After the explanation, I’ll put it to practice by going through a Gentoo Linux
+installation following the &lt;a href=&quot;https://wiki.gentoo.org/wiki/Handbook:X86&quot;&gt;Gentoo x86 handbook&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h2 id=&quot;the-theory&quot;&gt;The Theory&lt;/h2&gt;
+
+&lt;p&gt;Booting, bootstrapping, or “to pull oneself up by one’s bootstrap” gets to the
+spirit of the process. An initial program on the computer loads the OS which in
+turn continues loading more of itself onto main memory.&lt;/p&gt;
+
+&lt;p&gt;The initial program or firmware resides in non-volatile memory separate from
+main memory and secondary memory. When the machine is powered on, the CPU
+starts executing this firmware. It initializes hardware it needs to bootstrap
+OS code. There’s a lot of technical details to unpack in that alone, but what
+is worth focusing on is how the CPU running firmware code can start reading OS
+code from secondary memory. They both need an already agreed-upon standard and
+format.&lt;/p&gt;
+
+&lt;p&gt;One such standard is the Unified Extensible Firmware Interface or UEFI. It can
+support running an executable from secondary memory where the storage device
+has a GUID Partition Table and the executable is located on a FAT32 partition.
+In this case, the executable is the kernel for the OS. This process, where a
+UEFI-compliant firmware loads the kernel without the use of an intermediary
+program or bootloader, is called EFIStub booting.&lt;/p&gt;
+
+&lt;p&gt;Sometimes, the kernel needs more utilities than what it has built-in in order
+to continue reading in more OS code. If secondary memory is encrypted or uses a
+higher layer of abstraction on top of partitions, then the kernel will need a
+sort of early userspace where there are tools to deal with it. One specific
+implementation of this is called an initramfs.&lt;/p&gt;
+
+&lt;p&gt;In an initramfs, there is an &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;init&lt;/code&gt; program whose job is to mount the root file
+system and to pass off control to an &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;init&lt;/code&gt; program on secondary memory. This
+second &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;init&lt;/code&gt; is responsible for running scripts that begin on startup. This
+includes configuring network devices, mounting storage devices, and other
+services or daemons that need to start on every boot.&lt;/p&gt;
+
+&lt;p&gt;There’s a LOT of details omitted here. Some of them are in hardware/firmware,
+where the average programmer and sysadmin don’t have much in the way of
+affecting it. Some of them are in software, where a highly motivated individual
+could influence. But with just this incomplete understanding of the boot
+process, you’ll be able to intelligently follow along on how to install Gentoo
+Linux.&lt;/p&gt;
+
+&lt;h2 id=&quot;preliminaries&quot;&gt;Preliminaries&lt;/h2&gt;
+
+&lt;p&gt;Download &lt;a href=&quot;https://www.virtualbox.org/wiki/Downloads&quot;&gt;Virtualbox&lt;/a&gt; and create a VM running the &lt;a href=&quot;https://www.gentoo.org/downloads/&quot;&gt;minimal install CD&lt;/a&gt;
+for Gentoo. There are a few important settings to enable.&lt;/p&gt;
+
+&lt;p&gt;First, create a port forward between the guest’s port 22 and the host’s 2222
+so that copying and pasting is possible on a host’s terminal. Otherwise, you’ll
+be forced to use a clunkier terminal in the guest through Virtualbox.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/images/virtualbox_port_forward_1.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/images/virtualbox_port_forward_2.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/images/virtualbox_port_forward_3.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Secondly, make sure that the VM is booting in EFI mode.
+&lt;img src=&quot;/assets/images/virtualbox_enable_efi.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Lastly, enable the VM to utilize multiple vCPUs to speed up code compilation.
+&lt;img src=&quot;/assets/images/virtualbox_multiple_cpus.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;In the guest, set a password for the root user and start the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ssh&lt;/code&gt; server.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ passwd
+$ /etc/init.d/sshd start
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;On a terminal in the host, you can &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ssh&lt;/code&gt; into the VM and continue to manipulate
+it here.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ ssh -lroot -p2222 127.0.0.1
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;drive-partitioning&quot;&gt;Drive Partitioning&lt;/h2&gt;
+
+&lt;p&gt;Create a GPT on the drive. GPT is the table of contents that shows how the
+storage device is laid out in terms of partitions and contains metadata like
+attribute flags for those partitions. Make sure you are using the right device
+with &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;lsblk&lt;/code&gt; and then use &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;parted&lt;/code&gt; to create the partition table (in my case I
+wanted to use &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sda&lt;/code&gt;).&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ lsblk
+NAME  MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+loop0   7:0    0 387.1M  1 loop /mnt/livecd
+sda     8:0    0    16G  0 disk
+sr0    11:0    1   423M  0 rom  /mnt/cdrom
+$ parted -a optimal /dev/sda
+(parted) unit mib
+(parted) mklabel gpt
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Create a partition for the kernel and set the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;boot&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;esp&lt;/code&gt; flags. The flags
+are a guide for the firmware to look for an executable there.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;(parted) mkpart primary 1 1025
+(parted) name 1 &quot;EFI System Partition&quot;
+(parted) set 1 esp on
+(parted) set 1 boot on
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The last partition can take up the rest of the drive for the root filesystem
+and swap space. The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;lvm&lt;/code&gt; flag is set so it can be logically subdivided using
+the Logical Volume Manager (more on that later).&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;(parted) mkpart primary 1025 -1
+(parted) name 2 lvm
+(parted) set 2 lvm on
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;In the end, the partition scheme should look something like this.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;(parted) print
+Model: ATA VBOX HARDDISK (scsi)
+Disk /dev/sda: 16384MiB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags:
+
+Number  Start    End       Size      File system  Name                  Flags
+1      1.00MiB  1025MiB   1024MiB                EFI System Partition  boot, esp
+2      1025MiB  16383MiB  15358MiB               lvm                   lvm
+
+(parted) quit
+Information: You may need to update /etc/fstab.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;As expected, this creates partitions &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sda1&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sda2&lt;/code&gt; on the sda device.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ lsblk
+NAME   MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+loop0    7:0    0 387.1M  1 loop /mnt/livecd
+sda      8:0    0    16G  0 disk
+├─sda1   8:1    0     1G  0 part
+└─sda2   8:2    0    15G  0 part
+sr0     11:0    1   423M  0 rom  /mnt/cdrom
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Since UEFI-compliant firmware expects a FAT32 filesystem, create one on
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/dev/sda1&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ mkfs.vfat -F32 /dev/sda1
+mkfs.fat 4.1 (2017-01-24)
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;lvm-on-luks&quot;&gt;LVM on LUKS&lt;/h2&gt;
+
+&lt;p&gt;Running Logical Volume Manager (LVM) on a Linux Unified Key Setup (LUKS)
+partition is a common practice. With LUKS, data can be encrypted at rest.&lt;/p&gt;
+
+&lt;p&gt;The first command creates a partition encrypted with the aes-xts-plain64
+cipher, uses sha512 to hash the passphrase, and sets the encryption key size to
+512 bits. The second command decrypts the partition and maps it as a block
+device called &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;lvm&lt;/code&gt; under &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/dev/mapper&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ cryptsetup luksFormat -c aes-xts-plain64 -h sha512 -s 512 /dev/sda2
+$ cryptsetup luksOpen /dev/sda2 lvm
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Now LVM has a lot of features as opposed to regular ol’ partitions, but the
+main concepts to know are:&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;Physical volumes, like a disk or its partitions, make up a volume group (VG).&lt;/li&gt;
+  &lt;li&gt;Volume groups are made up of logical volumes (LV).&lt;/li&gt;
+  &lt;li&gt;Logical volumes can more or less be treated as regular partitions.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Register the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;lvm&lt;/code&gt; block device as a physical volume, create volume group
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;vg0&lt;/code&gt; with &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;lvm&lt;/code&gt; as its underlying physical volume, and create two logical
+volumes for the root filesystem and swap space.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ lvm pvcreate /dev/mapper/lvm
+$ vgcreate vg0 /dev/mapper/lvm
+$ lvcreate -L 1G -n swap vg0
+$ lvcreate -l 100%FREE -n root vg0
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;And just like with &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/dev/sda1&lt;/code&gt;, create a filesystem on top of each LV. Make the
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;swap&lt;/code&gt; LV a swap space and create an ext4 filesystem for the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;root&lt;/code&gt; LV. One
+thing to note, is that you can access these new LV’s under:
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/dev/mapper/&amp;lt;name of vg&amp;gt;-&amp;lt;name of lv&amp;gt;&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ ls -l /dev/mapper
+total 0
+crw------- 1 root root 10, 236 Nov 16 08:16 control
+lrwxrwxrwx 1 root root       7 Nov 17 03:08 lvm -&amp;gt; ../dm-0
+lrwxrwxrwx 1 root root       7 Nov 17 03:08 vg0-root -&amp;gt; ../dm-2
+lrwxrwxrwx 1 root root       7 Nov 17 03:08 vg0-swap -&amp;gt; ../dm-1
+$ mkswap /dev/mapper/vg0-swap
+$ mkfs.ext4 /dev/mapper/vg0-root
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;stage-3&quot;&gt;Stage 3&lt;/h2&gt;
+
+&lt;p&gt;So far you’ve gone through the process of formatting secondary memory, but now
+you need to make the actual kernel. Herein lies the rub, you need tools like a
+C compiler to build the kernel, but to get the tools you need to build them
+using an OS. To solve this chicken-and-egg conundrum you can download the tools
+precompiled for the amd64 microarchitecture. The Gentoo community puts these
+tools in a stage 3 tarball (it’s actually &lt;a href=&quot;https://wiki.gentoo.org/wiki/Stage_tarball#Stage_3&quot;&gt;the entire OS sans kernel&lt;/a&gt;).&lt;/p&gt;
+
+&lt;p&gt;Mount the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;root&lt;/code&gt; LV and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;cd&lt;/code&gt; into it.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ mount /dev/mapper/vg0-root /mnt/gentoo
+$ cd /mnt/gentoo
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;It is important to set the correct date and time on the system so files that
+get downloaded have the correct time attributes.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ ntpd -g -q
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Fire up &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;links&lt;/code&gt;, a command-line terminal, to download the stage 3
+tarball.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ links https://www.gentoo.org/downloads/mirrors/
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;First-timers will find it weird using a command-line web browser. Naturally,
+the up/down arrows traverse the links and the enter button selects the
+highlighted link.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/images/links.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Choose one of the mirrors and traverse the directory structure:
+releases -&amp;gt; amd64 -&amp;gt; autobuilds -&amp;gt; current-stage3-amd64.&lt;/p&gt;
+
+&lt;p&gt;As of this writing, download &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;stage3-amd64-20201115T214503Z.tar.xz&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/images/stage3_tar_xz.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Note, it’s important to verify the integrity of the download. To do that
+requires the corresponding digest file, Gentoo’s &lt;a href=&quot;https://wiki.gentoo.org/wiki/Project:RelEng&quot;&gt;Release Engineering&lt;/a&gt; key,
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sha512sum&lt;/code&gt;, and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;gpg&lt;/code&gt;. Going over it is a bit of a chore, so it’s left as an
+exercise to the reader.&lt;/p&gt;
+
+&lt;p&gt;Decompress the tarball. The screen should scroll with the names of the files
+being extracted.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ tar xpvf stage3-*.tar.xz --xattrs-include='*.*' --numeric-owner
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Edit some of setting in Portage, Gentoo’s source package manager, to make code
+compilation or the packages itself run faster.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ nano -w /mnt/gentoo/etc/portage/make.conf
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;For a CPU like this,&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ lscpu | egrep &quot;(Architecture|CPU(s):|Model\ name)&quot;
+Architecture:                    x86_64
+CPU(s):                          4
+Model name:                      Intel(R) Core(TM) i7-8650U CPU @ 1.90GHz
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;these lines are basic optimizations.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;MAKEOPTS=&quot;-j5&quot;
+COMMON_FLAGS=&quot;-O2 -pipe -march=native&quot;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Configure Portage to use specific mirrors to make downloading source code for
+packages faster.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ mirrorselect -i -o &amp;gt;&amp;gt; /mnt/gentoo/etc/portage/make.conf
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Which appends a line like this to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;make.conf&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;GENTOO_MIRRORS=&quot;https://gentoo.osuosl.org/ https://mirrors.rit.edu/gentoo/&quot;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Copy the default configuration for the &lt;a href=&quot;https://wiki.gentoo.org/wiki/Ebuild_repository&quot;&gt;Gentoo ebuild repository&lt;/a&gt; to the
+correct location.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ mkdir --parents /mnt/gentoo/etc/portage/repos.conf
+$ cp /mnt/gentoo/usr/share/portage/config/repos.conf /mnt/gentoo/etc/portage/repos.conf/gentoo.conf
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;DNS information should be copied so when you chroot into the root directory
+later, networking remains functional.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ cp --dereference /etc/resolv.conf /mnt/gentoo/etc/
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;So far you have been running the OS off of the live cd in primary memory, but
+when you run the later commands in this article, you need the changes to affect
+secondary memory. To do that, you can remount pseudo-filesystems: &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/dev&lt;/code&gt;,
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/&lt;/code&gt;, etc. to secondary memory.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ mount --types proc /proc /mnt/gentoo/proc
+$ mount --rbind /sys /mnt/gentoo/sys
+$ mount --make-rslave /mnt/gentoo/sys
+$ mount --rbind /dev /mnt/gentoo/dev
+$ mount --make-rslave /mnt/gentoo/dev
+$ chroot /mnt/gentoo /bin/bash
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Reload the shell profile and change the shell prompt to remind yourself that
+you are not still in the loop device.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ source /etc/profile
+$ export PS1=&quot;(chroot) ${PS1}&quot;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Install the snapshot of the aforementioned Gentoo ebuild repository. The repo
+also has the concept of profiles to figure out which packages are candidates
+for installation. Choose the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;default/linux/amd64/17.1 (stable)&lt;/code&gt; profile.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ emerge-webrsync
+$ eselect profile list
+Available profile symlink targets:
+  [1]   default/linux/amd64/17.1 (stable) *
+...
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Even though it can take a while, update the world set packages in case there
+are any differences between packages in the stage 3 tarball you downloaded and
+the profile you selected (I wouldn’t think there would be any, but the Gentoo
+install guide says it’s necessary).&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ emerge --ask --verbose --update --deep --newuse @world
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Next, the time zone has to be set in &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/etc/timezone&lt;/code&gt;.  The available time zones
+are in &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/usr/share/zoneinfo&lt;/code&gt; as directories and files. For somebody living in
+SF, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;America/Los_Angeles&lt;/code&gt; might be an appropriate one.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ ls -lh --file-type /usr/share/zoneinfo | grep America
+drwxr-xr-x  6 root root 4.0K Nov 15 14:09 America/
+$ ls -lh --file-type /usr/share/zoneinfo/America | grep Los_Angeles
+-rw-r--r--  2 root root 2.8K May 11  2020 Los_Angeles
+$ echo &quot;America/Los_Angeles&quot; &amp;gt; /etc/timezone
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Reconfigure &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;timezone-data&lt;/code&gt; to use the new time zone.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ emerge --config sys-libs/timezone-data
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Edit the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;locale.gen&lt;/code&gt; file to enable different locales (local languages).&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ nano -w /etc/locale.gen
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;US English UTF-8 or ISO-8859-1 is going to be used in this exercise.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;en_US ISO-8859-1
+en_US.UTF-8 UTF-8
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Now run the following to actually apply the changes.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ locale-gen
+$ eselect locale list
+Available targets for the LANG variable:
+  [1]   C
+  [2]   C.utf8
+  [3]   POSIX
+  [4]   en\_US
+  [5]   en\_US.iso88591
+  [6]   en\_US.utf8
+  [7]   C.UTF8 *
+  [ ]   (free form)
+$ eselect locale set en_US.utf8
+$ env-update &amp;amp;&amp;amp; source /etc/profile &amp;amp;&amp;amp; export PS1=&quot;(chroot) ${PS1}&quot;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;the-kernel&quot;&gt;The Kernel&lt;/h2&gt;
+
+&lt;p&gt;With the base system installed and configured, the next thing to move onto is
+the kernel. Run &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;emerge&lt;/code&gt; below to download the source code to
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/usr/src/linux&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ emerge --ask sys-kernel/gentoo-sources
+$ cd /usr/src/linux
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The kernel is not ready to be compiled just yet. There are a few options to
+configure first.&lt;/p&gt;
+
+&lt;h3 id=&quot;support-for-luks&quot;&gt;Support for LUKS&lt;/h3&gt;
+
+&lt;p&gt;Run &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;make menuconfig&lt;/code&gt; in &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/usr/src/linux&lt;/code&gt; to set these options. The options are
+shown as it appears in the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ncurses&lt;/code&gt; UI and also as the corresponding variable
+of &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;.config&lt;/code&gt; (gets created when you save in &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;make menuconfig&lt;/code&gt;) in brackets.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;[*] Enable loadable module support [CONFIG_MODULES=y]
+Device Drivers ---&amp;gt;
+    [*] Multiple devices driver support (RAID and LVM) ---&amp;gt;  [CONFIG_MD=y]
+        &amp;lt;*&amp;gt; Device mapper support  [CONFIG_BLK_DEV_DM=y]
+        &amp;lt;*&amp;gt;   Crypt target support [CONFIG_DM_CRYPT=y]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;[*] Cryptographic API ---&amp;gt; [CONFIG_CRYPTO=y]
+    &amp;lt;*&amp;gt; XTS support        [CONFIG_CRYPTO_XTS=y]
+    &amp;lt;*&amp;gt; SHA224 and SHA256 digest algorithm [CONFIG_CRYPTO_SHA256=y]
+    &amp;lt;*&amp;gt; SHA384 and SHA512 digest algorithm [CONFIG_CRYPTO_SHA512=y]
+    &amp;lt;*&amp;gt; AES cipher algorithms [CONFIG_CRYPTO_AES=y]
+    &amp;lt;*&amp;gt; User-space interface for hash algorithms [CONFIG_CRYPTO_USER_API_HASH=y]
+    &amp;lt;*&amp;gt; User-space interface for symmetric key cipher algorithms [CONFIG_CRYPTO_USER_API_SKCIPHER=y]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;So even though the kernel has support for LUKS, userspace still needs utilities
+too. Install &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;dm-crypt&lt;/code&gt; and register the daemon with OpenRC so &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;init&lt;/code&gt; knows to
+start it on boot.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ emerge --ask sys-fs/cryptsetup
+$ rc-update add dmcrypt boot
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h3 id=&quot;support-for-lvm&quot;&gt;Support for LVM&lt;/h3&gt;
+
+&lt;p&gt;These are the options to enable LVM.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;Device Drivers  ---&amp;gt;
+   &amp;lt;*&amp;gt; Multiple devices driver support (RAID and LVM) [CONFIG_MD=y]  ---&amp;gt;
+       &amp;lt;*&amp;gt; Device mapper support [CONFIG_BLK_DEV_DM=y]
+           &amp;lt;*&amp;gt; Crypt target support [CONFIG_DM_CRYPT=y]
+           &amp;lt;*&amp;gt; Snapshot target [CONFIG_DM_SNAPSHOT=y]
+           &amp;lt;*&amp;gt; Mirror target [CONFIG_DM_MIRROR=y]
+           &amp;lt;*&amp;gt; Multipath target [CONFIG_DM_MULTIPATH=y]
+               &amp;lt;*&amp;gt; I/O Path Selector based on the number of in-flight I/Os [CONFIG_DM_MULTIPATH_QL=y]
+               &amp;lt;*&amp;gt; I/O Path Selector based on the service time [CONFIG_DM_MULTIPATH_ST=y]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Also, install &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;lvm2&lt;/code&gt; to be able to manage LVM devices in userspace. Just as in
+the case with &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;dm-crypt&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;lvm2&lt;/code&gt; should also start on boot.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ emerge --ask sys-fs/lvm2
+$ rc-update add lvm boot
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Somewhat related, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;init&lt;/code&gt; needs the contents of &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/etc/fstab&lt;/code&gt; to mount the root
+filesystem, swap space, and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/boot&lt;/code&gt;. Run &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;blkid&lt;/code&gt; to figure out the UUIDs of
+the lv’s and partitions you made and open &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/etc/fstab&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ blkid /dev/mapper/vg0-root
+$ blkid /dev/mapper/vg0-swap
+$ blkid /dev/sda1
+$ nano /etc/fstab
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/etc/fstab&lt;/code&gt; should have lines like this:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;UUID=&quot;56071e45-962a-42d7-b3c3-c3291e3d860a&quot; / ext4 defaults 0 0
+UUID=&quot;ae2ce0cc-65b1-4f64-b414-87ee858e4169&quot; none swap defaults 0 0
+UUID=&quot;21E2-19B2&quot; /boot vfat defaults 0 2
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h3 id=&quot;support-for-initramfs-and-efistub&quot;&gt;Support for Initramfs and EFIStub&lt;/h3&gt;
+
+&lt;p&gt;As mentioned before, the kernel needs an initramfs to mount a root that is on
+secondary memory with LUKS and LVM. To supply one to the kernel, use
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;genkernel&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ emerge --ask sys-kernel/genkernel
+$ genkernel --lvm --luks --no-install initramfs
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;This creates an initramfs file in &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/var/tmp/genkernel/&lt;/code&gt;. The file is a cpio
+archive which needs to be moved to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/usr/src/initramfs.cpio&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ ls -lh /var/tmp/genkernel
+total 34M
+-rw-r--r-- 1 root root 34M Nov 20 22:42 initramfs-x86_64-5.4.72-gentoo
+$ file /var/tmp/genkernel/initramfs-x86_64-5.4.72-gentoo
+/var/tmp/genkernel/initramfs-x86_64-5.4.72-gentoo: ASCII cpio archive (SVR4 with no CRC)
+$ mv /var/tmp/genkernel/initramfs-x86_64-5.4.72-gentoo /usr/src/initramfs.cpio
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;These options embed that cpio archive into the kernel during compilation.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt; General setup  ---&amp;gt;
+    [*] Initial RAM filesystem and RAM disk (initramfs/initrd) support [CONFIG_BLK_DEV_INITRD=y]
+    (/usr/src/initramfs.cpio) Initramfs source file(s)  [CONFIG_INITRAMFS_SOURCE=/usr/src/initramfs.cpio]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;genkernel&lt;/code&gt; also makes an &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;init&lt;/code&gt; that the kernel executes when it mounts the
+initramfs. The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;init&lt;/code&gt; needs these variables in order to figure out how to mount
+the real root filesystem; these options embed those variables into the kernel.
+Refer to the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;RAMDISK/INITRAMFS OPTIONS&lt;/code&gt; section in the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;genkernel&lt;/code&gt;
+manual for more information.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;Processor type and features  ---&amp;gt;
+    [*] Built-in kernel command line [CONFIG_CMDLINE_BOOL=y]
+    (dolvm crypt_root=UUID=95538771-2ba9-46bb-bb50-4b442ad2f880 root=/dev/mapper/vg0-root rootfstype=ext4) [CONFIG_CMDLINE]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;It’s important to note that &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;crypt_root&lt;/code&gt; is the UUID of &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/dev/sda2&lt;/code&gt;, the
+underlying encrypted block device, not the LVM partition &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;vg0-root&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ blkid /dev/sda2
+/dev/sda2: UUID=&quot;95538771-2ba9-46bb-bb50-4b442ad2f880&quot; TYPE=&quot;crypto_LUKS&quot; PARTLABEL=&quot;lvm&quot; PARTUUID=&quot;8a847256-9505-4a66-a862-bfac8dc932b6&quot;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;These are the options needed for EFIStub booting.&lt;/p&gt;
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;Processor type and features  ---&amp;gt;
+    [*] EFI runtime service support  [CONFIG_EFI=y]
+    [*]   EFI stub support [CONFIG_EFI_STUB=y]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;Firmware Drivers  ---&amp;gt;
+   EFI (Extensible Firmware Interface) Support  ---&amp;gt;
+       &amp;lt;*&amp;gt; EFI Variable Support via sysfs [CONFIG_EFI_VARS=y]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h3 id=&quot;build-kernel-move-kernel-set-boot-order&quot;&gt;Build Kernel, Move Kernel, Set Boot Order&lt;/h3&gt;
+
+&lt;p&gt;Finally it is time to compile the kernel.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ make &amp;amp;&amp;amp; make modules_install
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;This creates a bzImage containing the kernel in
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/usr/src/linux/arch/x86_64/boot/bzImage&lt;/code&gt;. Now the goal is to move this kernel
+to the FAT32 partition so that the firmware can load it as an EFI executable.
+Mount the partition under &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/boot&lt;/code&gt;, create some folders for the sake of
+organization, and move the kernel.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ mount /dev/sda1 /boot
+$ mkdir -p /boot/EFI/Gentoo
+$ mv arch/x86_64/boot/bzImage /boot/EFI/Gentoo/bzImage-5.4.72.efi
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The firmware that loads this kernel maintains a boot order list. Use
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;efibootmgr&lt;/code&gt; to manipulate it. Install it and add an entry for the Gentoo
+kernel.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ emerge --ask sys-boot/efibootmgr
+$ efibootmgr -c -L &quot;Gentoo-5.4.72&quot; -l '\EFI\Gentoo\bzImage-5.4.72.efi'
+$ efibootmgr -v #Sanity check for the boot order.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;miscellanea-and-the-moment-of-truth&quot;&gt;Miscellanea and the Moment of Truth&lt;/h2&gt;
+
+&lt;p&gt;At this point the installation is complete, but there are still a handful of
+things to configure:&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;Set a password for &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;root&lt;/code&gt; or make a new user, otherwise there is no user for
+you to log in as.&lt;/li&gt;
+  &lt;li&gt;Install &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;dhcpcd&lt;/code&gt; so that networking continues working on reboot. Add it as a
+service that starts on boot.&lt;/li&gt;
+  &lt;li&gt;Add the ssh server as a service that also starts on boot. Edit the config
+to allow &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;root&lt;/code&gt; login, if you haven’t added another user.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ passwd root
+$ emerge --ask net-misc/dhcpcd
+$ rc-update add dhcpcd default
+$ rc-update add sshd default
+$ nano /etc/ssh/sshd_config
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Make sure &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/etc/ssh/sshd_config&lt;/code&gt; has this line. I know it’s not a good security
+posture to allow &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;root&lt;/code&gt; logins through &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ssh&lt;/code&gt;, but this is just for testing.&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;PermitRootLogin yes
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Leave the chroot and reboot.&lt;/p&gt;
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ exit
+$ reboot
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;If everything goes smoothly, the VM will be able to boot the installed OS.
+Otherwise you’ll have to fix your install by booting the livecd and running
+that block of commands that mounts filesystems and running a chroot.&lt;/p&gt;
+
+&lt;p&gt;So there you go. Hopefully this pulls the cover off of the process of booting a
+little bit and now you’ll have a one-up on those annoying Arch Linux users.&lt;/p&gt;</content><author><name>David Nguyen</name><email>david@davidnguyenis.me</email></author><summary type="html">Since this post marks the start of my blog, there’s nothing more fitting than to talk about booting. Booting is the process in which computers initialize and start an operating system. It’s a dance between hardware and software, so the details can vary between computers. I am going to focus, particularly, on one way an x86 machine boots a Linux based OS using UEFI-compliant firmware. After the explanation, I’ll put it to practice by going through a Gentoo Linux installation following the Gentoo x86 handbook.</summary></entry></feed>
